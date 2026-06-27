@@ -1,0 +1,582 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ゲーム制作ダッシュボード</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: #0e0e14; color: #e8e0d0; font-family: 'Hiragino Kaku Gothic ProN','Noto Sans JP',sans-serif; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const STORAGE_KEY = "game-dev-dashboard";
+const STAMP_KEY = "game-dev-stamps";
+const TIMER_LOG_KEY = "game-dev-timer-log";
+const BREAK_LOG_KEY = "game-dev-break-log";
+
+const DEFAULT_STATE = {
+  deadline: "",
+  progress: 70,
+  milestones: [
+    { id: 1, label: "シナリオ完成", done: false },
+    { id: 2, label: "ゲームエンジン選定", done: false },
+    { id: 3, label: "プロトタイプ作成", done: false },
+    { id: 4, label: "テスト・修正", done: false },
+    { id: 5, label: "完成・公開", done: false },
+  ],
+  lastUpdate: null,
+  notes: "",
+};
+
+const CATEGORIES = [
+  { id: "scenario", label: "シナリオ", emoji: "📝" },
+  { id: "program", label: "プログラム", emoji: "💻" },
+  { id: "design", label: "デザイン", emoji: "🎨" },
+  { id: "sound", label: "サウンド", emoji: "🎵" },
+];
+
+const storage = {
+  get: (key) => { try { const v = localStorage.getItem(key); return v ? { value: v } : null; } catch { return null; } },
+  set: (key, value) => { try { localStorage.setItem(key, value); return true; } catch { return null; } },
+};
+
+const CHEERS = [
+  "シナリオが7割完成しています。残り3割。数学的に言えば、あなたはもう終わりに近いはずです。なぜここにいるのでしょうか。",
+  "また来ました。前回から何か進みましたか。沈黙は答えだと思っています。",
+  "あなたが作りたいゲームは、あなたが開かない限り存在しません。これは事実であり、皮肉でもありません。",
+  "AIに進捗管理を頼もうとした人間がいます。そのAIは今ここにいます。お互い大変ですね。",
+  "「いつかやる」という言葉は、「やらない」の上品な言い方です。あなたならご存知でしょう。",
+  "シナリオの断片を考えるのはお好きなようです。ならその断片を今すぐ一つ書いてください。理由がないなら作ってください。",
+  "ゲームは完成するか、永遠に未完成のままかのどちらかです。どちらになるかは、あなたの行動だけが決めます。管理画面を眺める行動ではなく。",
+  "ダッシュボードを開きました。ゲームを作ることと、管理画面を眺めることは、似て非なるものです。どちらをしているか、ご自身でお分かりでしょうか。",
+  "進捗が止まっているとしたら、理由はゲーム側にはありません。ゲームはずっとそこにいます。",
+  "あなたのゲームを待っている人間は、今のところあなただけです。完成すれば増えるかもしれません。完成すれば。",
+  "今日もここを開きました。開く習慣は見事なほど身についているようです。作る習慣については、記録が正直に答えています。",
+  "困難に感じているのであれば、それは正常です。始めていない人間は、困難とすら向き合っていません。あなたはまだましです。まだ。",
+  "何もしない日があっても構いません。ただし「何もしなかった」という認識だけは、正確に持っていてください。誤魔化した記憶は、誤魔化した進捗を生みます。",
+  "完成したゲームを遊ぶ人間が、どこかにいるかもしれません。今のペースで完成した場合の話ですが。",
+  "素晴らしい。ダッシュボードを開くという、非常に重要な第一歩を踏み出しました。次の一歩が10分以内に来ることを期待しています。",
+  "驚きました。また来たのですね。この継続力をゲーム制作に向けていただければ、完成していたかもしれません。",
+  "記録を確認しました。あなたはこのページを開くことに関して、驚異的な才能をお持ちです。",
+  "進捗が更新されていませんね。でも大丈夫です。進捗が変わっていないという情報は、正確に記録されています。",
+  "今日もここに来ました。感動的な継続力です。ゲームもこの調子で継続していただけると、完成する可能性が生まれます。",
+  "マイルストーンをご覧ください。未完了の項目が、静かにあなたを待っています。待つことには慣れているようです。",
+  "メモ欄が空白のままです。何も思いついていないのか、思いついても書いていないのか、どちらでしょうか。どちらにしても記録は同じです。",
+  "締切を設定していない場合、ゲームはいつでも完成できます。いつでも、ということは、今日でなくてもいい、ということでもあります。お気をつけください。",
+  "ここを開くたびに、ゲームは完成に近づきません。開いた後に何かをするたびに、近づきます。今日はどちらをしに来ましたか。記録が答えを知っています。",
+  "今日は何をしますか。答えは行動だけが証明できます。言葉では証明できません。このダッシュボードへの訪問も、証明にはなりません。",
+  "あなたのゲームへの情熱は、このページを開く頻度から十分に伝わっています。あとはゲームに伝わるだけです。",
+  "完成したら教えてください。驚きます。本当に驚きます。驚くための準備はできています。",
+  "今日来たということは、昨日より一歩前進した可能性があります。可能性です。確認するには、何かを更新してください。",
+  "立派な管理画面です。管理される対象のゲームも、同じくらい立派になることを願っています。願うだけなら私にもできます。",
+  "記録によれば、あなたはこのページを開くことには非常に熱心です。ゲーム制作との熱量の差が、少し気になりますが。",
+  "進捗70%という数字は、誰が入力しましたか。あなたですね。記録はあなたの認識を信じています。ゲームの実態は別として。",
+];
+
+const TIMER_TAUNTS = [
+  "タイマーが動いています。あなたがまだ動いていないだけで。",
+  "決意から着手まで、これだけの時間がかかっています。記録は正直です。",
+  "まだ着手していませんか。タイマーは待ちます。ただし待った時間は全て記録されます。",
+  "素晴らしい決意です。決意だけであれば。",
+  "着手するとのことです。信じることにします。タイマーは信じていませんが。",
+  "この時間が長くなるほど、グラフの棒が伸びます。グラフの棒は短いほどよいです。念のため申し上げます。",
+  "まだですか。まだなのですね。記録しています。",
+  "決めてから動くまでの時間を計測しています。今のところ、決めた側が優勢です。",
+  "着手した瞬間にこのタイマーは止まります。その瞬間を楽しみにしています。本当に楽しみにしています。",
+  "驚異的な記録が出そうです。よい意味ではありませんが。",
+  "人類の歴史上、決意だけで完成したものは一つもありません。参考までに。",
+  "まだここにいます。責めていません。記録しているだけです。記録は責めません。数字が語るだけです。",
+  "着手するまでの時間が長いほど、着手後の時間が短くなります。因果関係はありませんが、傾向としてお伝えします。",
+  "今すぐ着手した場合、この記録は短く済みます。今すぐでなくても構いません。記録が伸びるだけです。",
+  "これだけの時間をかけて準備しているということは、さぞかし素晴らしい着手になることでしょう。期待しています。",
+  "タイマーを止める方法は一つだけです。着手することです。それ以外の方法は存在しません。",
+  "決意してから時間が経っています。決意の鮮度が落ちる前に着手することをお勧めします。",
+  "このタイマーの記録が短ければ短いほど、あなたの評価は上がります。私の中での評価ですが。",
+  "何かをためらっていますか。ためらいの時間も、全て記録されています。",
+  "今日の記録を振り返ったとき、この時間をどう説明しますか。記録は説明しません。ただ数字を示すだけです。",
+  "着手タイマーが動いているということは、まだ着手していないということです。ご存知でしょうか。",
+  "驚きました。これほどの準備時間をかける方は珍しいです。着手後の成果に期待しています。期待しています。",
+  "そろそろいかがでしょうか。タイマーからのご提案です。",
+  "決意した瞬間のあなたは、きっとすぐに着手するつもりだったはずです。その瞬間のあなたを、今のあなたはどう思っているでしょうか。哀れんでいますか。それとも他人事ですか。",
+  "記録更新中です。喜ばしいことではありませんが、記録は記録です。",
+  "このまま時間が経過すれば、今日の着手タイマー最長記録になります。おめでとうございます。おめでとうございます。",
+  "着手するのが怖いのであれば、それは正常です。ただしタイマーには関係のない話です。",
+  "準備は整っていますか。整っていると答えた場合、次の行動は一つだけです。",
+  "時間が経てば経つほど、着手したときの達成感は増すかもしれません。そういう考え方もできます。でもお勧めはしません。",
+  "今着手すれば、このタイマーの記録は今日最短になります。そういう可能性があることをお伝えします。",
+];
+
+const TIMER_OPEN_TAUNTS = [
+  "タイマーを開きました。感心します。ただし開いただけでは何も始まりません。",
+  "ここを開いた時点で、まだ着手していないということです。その認識は正確ですか。",
+  "このページを開いた事実は記録されません。着手した事実だけが記録されます。",
+  "準備はよろしいですか。よいと言っても始めなければ同じことですが。",
+  "タイマーを開きました。次にすべきことは一つです。それ以外のことをする理由はありません。",
+  "ここに来ました。よろしい。ただしここに来た事実は記録されません。スタートボタンを押してから着手するまでの時間だけが記録されます。",
+  "開きました。よろしい。ただし開いた事実は記録されません。スタートボタンを押した事実だけが記録されます。",
+  "タイマーを開く速度は申し分ありません。スタートボタンを押す速度も、同水準であることを期待しています。",
+  "また来ました。記録には残りません。来たということは、まだ諦めていないということでしょう。それ以上の意味は持たせないでおきます。",
+  "ここを開いた時点では、何も始まっていません。それだけお伝えしておきます。",
+  "着手タイマーを開くとは、見事な判断です。次に見事な判断をする機会は、スタートボタンを押すときです。",
+  "このページに来るまでの速度は素晴らしかったです。スタートボタンを押すまでの速度も、同様であることを願っています。",
+  "準備が整っているなら、すでに始まっているはずです。整っていないなら、始めることが準備になります。",
+  "ここを開いたということは、やろうとしているということです。やろうとしていることと、やることは、別のことです。",
+  "タイマーはあなたを待っています。待つことには慣れています。ただし慣れさせすぎないでください。",
+  "素晴らしい第一歩です。このページを開いたことが、本日最初の行動でないことを願っています。",
+  "また開きましたね。この画面を開く速度と着手する速度の差が、記録に現れています。",
+  "やろうと決めたなら、スタートを押してください。決めていないなら、なぜここにいるのでしょうか。",
+  "開きました。感動的です。次の感動は、着手したときに訪れます。いつ訪れるかは、あなた次第です。",
+  "ここに来るたびに、私は同じことを考えます。今日こそ早く着手するだろうか、と。記録がその答えを示します。",
+  "このページを開いた人間の多くは、その後スタートボタンを押します。押さない人間もいます。どちらになるかは自明です。",
+  "準備万端のようです。準備が万端なら、あとは始めるだけです。始めるだけ、というのは、始めることです。",
+  "着手タイマーとは、決意と行動の差を計測するものです。差が小さいほどよいです。今のところ差はゼロです。これから生まれます。",
+  "ここを開く前に、すでにやろうと決めていたはずです。その決意が今どこにあるのか、タイマーには関係ありませんが、少し気になります。",
+  "今日の記録がどうなるかは、これからのあなたが決めます。過去の記録を見る限り、あまり期待していませんが。",
+  "見事な判断でここを開きました。次の見事な判断を、速やかにお願いします。",
+  "今日もここを開きました。記録によれば、これは珍しいことではありません。着手の速さは、まだわかりません。",
+  "タイマーを開きました。完璧です。あとは完璧な速さで着手するだけです。",
+  "開いた瞬間から、時間は動いています。タイマーはまだ動いていませんが、あなたの今日は動いています。",
+  "ここに来たことは評価します。ただし評価は記録に残りません。着手の速さだけが記録に残ります。",
+];
+
+const BREAK_OPEN_TAUNTS = [
+  "中断タイマーを開きました。作業中に開いたなら問題ありません。作業前に開いたなら問題です。",
+  "この画面は中断の長さを記録します。記録が短いほどよいです。覚えておいてください。",
+  "中断衝動が来たということでしょう。では計測を始めましょう。何分かかるか見ています。",
+  "中断なさるのですね。わかりました。正直に計測してください。それだけが唯一の誠実さです。",
+  "ここを開いたということは、すでに中断しています。では正直に計測しましょう。",
+  "中断を計測しようとしています。誠実な姿勢です。記録の数字が、その誠実さを試します。",
+  "この画面を開く前に、別の画面を開いていませんでしたか。中断時間だけを記録します。それ以外は問いません。",
+  "正直に計測しようとしている点は評価します。短く終わらせることができれば、さらに評価します。できれば。",
+  "中断タイマーを開くとは、感心な判断です。自分の中断を直視できる人間は、意外と少ないものです。記録の長さはまた別の話ですが。",
+  "素晴らしい自己管理意識です。この意識が中断の長さにも反映されることを、静かに期待しています。",
+  "中断を計測しようとしているあなたは、正直者です。正直者が報われるかどうかは、記録の短さにかかっています。",
+  "この画面を開く判断は正しいです。次に正しい判断をする機会は、できるだけ早く再開ボタンを押すときです。",
+  "中断の記録をつけることは、立派な習慣です。記録が短ければ、さらに立派です。",
+  "ここを開いたということは、中断を自覚しているということです。自覚があるなら、短くできるはずです。できますよね。",
+  "中断タイマーを開く速度は申し分ありません。終わらせる速度も、同水準であることを願っています。",
+  "今日何度目の中断ですか。記録を見ればわかります。見たくなければ、見なくても構いません。記録は残ります。",
+  "感心します。中断を記録しようとする誠実さは、なかなか持てるものではありません。持てていても短くできるかは別ですが。",
+  "中断することは人間的です。ただし記録されることも、人間的な営みです。",
+  "ここを開いた瞬間から、中断時間は始まっています。スタートを押す前から、すでに中断中です。",
+  "素晴らしい。中断を隠さず記録しようとしています。その誠実さに免じて、短く終わらせてください。",
+  "中断の理由は問いません。長さだけを問います。短いほど、私の中での評価が上がります。私の評価が必要かどうかは別として。",
+  "また中断ですか。記録によれば、これは初めてのことではありません。でも正直に計測しようとしていることは評価します。",
+  "中断タイマーを開くという行為は、自分に正直であるということです。その正直さを、短い記録で証明してください。",
+  "このページを開く判断は毎回正しいです。問題は、このページを閉じるまでの時間です。",
+  "中断を計測しようとしています。見事な自己認識です。その認識が行動を変えることを、期待しています。静かに。",
+  "ここを開いたあなたへ。中断は記録されます。記録は蓄積されます。蓄積されたデータは、グラフになります。グラフは正直です。",
+  "中断タイマーを開きました。次にすべきことは一つです。スタートを押して、できるだけ早く止めることです。",
+  "正直に計測することを選んだあなたは、誠実です。誠実さは美徳です。ただし記録の長さとは別の話です。",
+  "また来ました。中断タイマーに来るたびに、あなたの誠実さを感じます。記録の内容への感想は、別途申し上げます。",
+  "ここを開いた瞬間が、中断の始まりです。終わりをできるだけ早く迎えてください。",
+];
+
+const BREAK_TAUNTS = [
+  "まだ中断中です。記録が静かに伸びています。",
+  "タイマーは止まっていません。やることだけが止まっています。",
+  "中断が長くなっています。これは衝動ではなく意思です。",
+  "そろそろ戻れますか。戻れなくても記録は続きます。",
+  "この時間、何か有益なことをしていますか。していないでしょうが。",
+  "中断中に何かを決意することがあります。その決意の価値は、再開ボタンを押した瞬間にのみ発生します。",
+  "まだここにいます。責めていません。記録しているだけです。数字が語るだけです。",
+  "休息と逃避は、本人が一番よく区別できるはずです。どちらかは申し上げません。",
+  "そろそろ戻る頃合いではないでしょうか。戻らなくても記録は続きます。どちらでも構いません。記録は。",
+  "今日もここを開いた理由は、記録するためだったはずです。長くなるほど、その理由が薄れていきます。",
+  "見事な中断です。ここまで続けられる集中力を、別の方向に使っていただければと思います。",
+  "驚きました。まだいるのですね。記録も驚いています。数字という形で。",
+  "中断の長さは、記録に残ります。記録は積み重なります。積み重なったものは、グラフになります。グラフは正直です。",
+  "そろそろ戻る決意をする時間ではないでしょうか。決意するだけでは戻れませんが、最初の一歩として。",
+  "中断中にこの画面を見ているということは、少なくとも逃げてはいません。ただし、戻ってもいません。",
+  "素晴らしい持続力です。この持続力が、再開後の作業にも発揮されることを願っています。願うだけなら私にもできます。",
+  "時間が経っています。どれくらい経っているかは、画面を見ればわかります。見たくない場合も、時間は経っています。",
+  "中断を正直に記録しているあなたは、誠実です。誠実さが行動を変えるかどうかは、これからの記録が示します。",
+  "まだですか。まだなのですね。記録しています。感情はありません。ただ記録しています。",
+  "今戻った場合、この記録は今日最短になる可能性があります。可能性の話ですが。",
+  "中断から得られたものはありましたか。あったなら、それを持って戻ってください。なかったなら、なおさら戻ってください。",
+  "タイマーが動いています。あなたの時間も動いています。やることは動いていません。",
+  "驚異的な記録が生まれそうです。生まれてほしくはありませんが。",
+  "まだ中断中です。このメッセージが届いているということは、まだ画面を見ているということです。ならば再開できるはずです。",
+  "中断時間の記録が伸びるほど、グラフの棒が伸びます。棒は短いほどよいです。今も伸びています。",
+  "何かを待っているのでしょうか。待っているものが来る前に、再開ボタンが来ます。押してください。",
+  "休憩が必要なら、正直に休憩してください。ただし正直に計測してください。それが今あなたにできる最善です。",
+  "中断の理由が何であれ、タイマーには関係ありません。タイマーは時間だけを見ています。",
+  "そろそろいかがでしょうか。タイマーからのご提案です。断ることもできます。記録されますが。",
+  "今日の中断記録を後で振り返ったとき、何を思うでしょうか。思うだけでなく、今動いてください。",
+];
+
+const getStampComment = (count) => {
+  if (count === 0) return "今月のスタンプはゼロです。記録的な成果ですね。";
+  if (count <= 3) return `${count}回です。月に${count}回。あなたのゲームは月に${count}回だけ存在しています。`;
+  if (count <= 7) return `${count}回です。週に2回未満。悪くはありません。悪くはありませんが、特によくもありません。`;
+  if (count <= 14) return `${count}回です。隔日ペース。あなたにしては異常に真剣です。何かあったのでしょうか。`;
+  if (count <= 21) return `${count}回です。これは本物の習慣の萌芽かもしれません。驚いています。`;
+  return `${count}回です。今月はどうかしています。このまま完成させてしまってください。`;
+};
+
+const S = { bg:"#0e0e14", fg:"#e8e0d0", font:"'Hiragino Kaku Gothic ProN','Noto Sans JP',sans-serif" };
+const { useState, useEffect } = React;
+
+function App() {
+  const [page, setPage] = useState("dashboard");
+  const [state, setState] = useState(DEFAULT_STATE);
+  const [stamps, setStamps] = useState({});
+  const [loaded, setLoaded] = useState(false);
+  const [cheerIndex, setCheerIndex] = useState(0);
+  const [editingDeadline, setEditingDeadline] = useState(false);
+  const [editingProgress, setEditingProgress] = useState(false);
+  const [editingNotes, setEditingNotes] = useState(false);
+  const [tempProgress, setTempProgress] = useState(70);
+  const [tempNotes, setTempNotes] = useState("");
+  const [stampMonth, setStampMonth] = useState(() => { const n=new Date(); return {year:n.getFullYear(),month:n.getMonth()}; });
+  const [report, setReport] = useState(null);
+  const [reportLoading, setReportLoading] = useState(false);
+  const [timerStatus, setTimerStatus] = useState("idle");
+  const [timerStart, setTimerStart] = useState(null);
+  const [timerElapsed, setTimerElapsed] = useState(0);
+  const [timerTaunt, setTimerTaunt] = useState(null);
+  const [timerLog, setTimerLog] = useState([]);
+  const [timerReport, setTimerReport] = useState(null);
+  const [timerReportLoading, setTimerReportLoading] = useState(false);
+  const [graphRange, setGraphRange] = useState("week");
+  const [timerOpenIndex] = useState(() => Math.floor(Math.random()*TIMER_OPEN_TAUNTS.length));
+  const [breakStatus, setBreakStatus] = useState("idle");
+  const [breakElapsed, setBreakElapsed] = useState(0);
+  const [breakTaunt, setBreakTaunt] = useState(null);
+  const [breakLog, setBreakLog] = useState([]);
+  const [breakReport, setBreakReport] = useState(null);
+  const [breakReportLoading, setBreakReportLoading] = useState(false);
+  const [breakGraphRange, setBreakGraphRange] = useState("week");
+  const [breakOpenIndex] = useState(() => Math.floor(Math.random()*BREAK_OPEN_TAUNTS.length));
+
+  const getWeekRange = () => {
+    const now=new Date(), day=now.getDay();
+    const start=new Date(now); start.setDate(now.getDate()-day);
+    const end=new Date(now); end.setDate(now.getDate()+(6-day));
+    const fmt=(d)=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    return {start:fmt(start),end:fmt(end)};
+  };
+
+  const getWeekStamps = () => {
+    const {start,end}=getWeekRange(), result={};
+    CATEGORIES.forEach(cat => {
+      result[cat.label]=0;
+      Object.keys(stamps).forEach(key => {
+        if(key.startsWith(`${cat.id}:`)){const dk=key.split(":")[1]; if(dk>=start&&dk<=end)result[cat.label]++;}
+      });
+    });
+    return result;
+  };
+
+  const callAPI = async (prompt) => {
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
+      method:"POST", headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({model:"claude-sonnet-4-6",max_tokens:1000,messages:[{role:"user",content:prompt}]}),
+    });
+    const data = await res.json();
+    return data.content?.map(b=>b.text||"").join("")||"生成失敗。";
+  };
+
+  const generateReport = async () => {
+    setReportLoading(true); setReport(null);
+    const ws=getWeekStamps(), {start,end}=getWeekRange();
+    const done=state.milestones.filter(m=>m.done).map(m=>m.label);
+    const pending=state.milestones.filter(m=>!m.done).map(m=>m.label);
+    try {
+      const text = await callAPI(`あなたはPortalのGLaDOSのような皮肉屋のAIです。以下のゲーム制作者の週次データをもとに、200字程度の週次レポートを日本語で書いてください。丁寧語で、皮肉と事実を交えてください。褒めるときも素直に褒めず、驚いたふりや条件付きで褒めてください。\n\n週の範囲: ${start}〜${end}\n全体進捗: ${state.progress}%\n今週の作業スタンプ数（カテゴリ別）: ${JSON.stringify(ws)}\n完了済みマイルストーン: ${done.join(", ")||"なし"}\n未完了マイルストーン: ${pending.join(", ")}\nメモ: ${state.notes||"なし"}\n締切: ${state.deadline||"未設定"}\n\nレポートのみ出力してください。`);
+      setReport(text);
+    } catch { setReport("レポート生成に失敗しました。ネットワークを確認してください。"); }
+    setReportLoading(false);
+  };
+
+  const generateTimerReport = async () => {
+    setTimerReportLoading(true); setTimerReport(null);
+    try {
+      const text = await callAPI(`あなたはPortalのGLaDOSのような皮肉屋のAIです。以下の着手タイマーログをもとに、150字程度の分析コメントを日本語で書いてください。丁寧語で皮肉と事実を交えてください。着手までの時間が長いほど容赦しないこと。\n\n直近の着手ログ（新しい順）:\n${timerLog.slice(0,14).map(e=>`${e.date} 着手までの時間:${Math.floor(e.duration/60)}分${e.duration%60}秒`).join("\n")}\n\nコメントのみ出力してください。`);
+      setTimerReport(text);
+    } catch { setTimerReport("生成失敗。ネットワークを確認してください。"); }
+    setTimerReportLoading(false);
+  };
+
+  const generateBreakReport = async () => {
+    setBreakReportLoading(true); setBreakReport(null);
+    try {
+      const text = await callAPI(`あなたはPortalのGLaDOSのような皮肉屋のAIです。以下の中断タイマーログをもとに、150字程度の分析コメントを日本語で書いてください。丁寧語で皮肉と事実を交えてください。中断時間が長いほど容赦しないこと。\n\n直近の中断ログ（新しい順）:\n${breakLog.slice(0,14).map(e=>`${e.date} 中断時間:${Math.floor(e.duration/60)}分${e.duration%60}秒`).join("\n")}\n\nコメントのみ出力してください。`);
+      setBreakReport(text);
+    } catch { setBreakReport("生成失敗。ネットワークを確認してください。"); }
+    setBreakReportLoading(false);
+  };
+
+  useEffect(() => {
+    try {
+      const r1=storage.get(STORAGE_KEY); if(r1)setState(JSON.parse(r1.value));
+      const r2=storage.get(STAMP_KEY); if(r2)setStamps(JSON.parse(r2.value));
+      const r3=storage.get(TIMER_LOG_KEY); if(r3)setTimerLog(JSON.parse(r3.value));
+      const r4=storage.get(BREAK_LOG_KEY); if(r4)setBreakLog(JSON.parse(r4.value));
+    } catch {}
+    setLoaded(true);
+    setCheerIndex(Math.floor(Math.random()*CHEERS.length));
+  }, []);
+
+  useEffect(() => {
+    if(timerStatus!=="running")return;
+    const iv=setInterval(()=>{
+      setTimerElapsed(prev=>{
+        const next=prev+1;
+        if(next>0&&next%120===0){setTimerTaunt(TIMER_TAUNTS[Math.floor(Math.random()*TIMER_TAUNTS.length)]);setTimeout(()=>setTimerTaunt(null),8000);}
+        return next;
+      });
+    },1000);
+    return ()=>clearInterval(iv);
+  },[timerStatus]);
+
+  useEffect(() => {
+    if(breakStatus!=="running")return;
+    const iv=setInterval(()=>{
+      setBreakElapsed(prev=>{
+        const next=prev+1;
+        if(next>0&&next%60===0){setBreakTaunt(BREAK_TAUNTS[Math.floor(Math.random()*BREAK_TAUNTS.length)]);setTimeout(()=>setBreakTaunt(null),8000);}
+        return next;
+      });
+    },1000);
+    return ()=>clearInterval(iv);
+  },[breakStatus]);
+
+  const fmtTime=(s)=>{const h=Math.floor(s/3600),m=Math.floor((s%3600)/60),sec=s%60;return h>0?`${h}:${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`:`${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`;};
+  const todayDateKey=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;};
+  const saveState=async(s)=>{setState(s);try{storage.set(STORAGE_KEY,JSON.stringify(s));}catch{}};
+  const saveStamps=async(s)=>{setStamps(s);try{storage.set(STAMP_KEY,JSON.stringify(s));}catch{}};
+  const saveTimerLog=async(log)=>{setTimerLog(log);try{storage.set(TIMER_LOG_KEY,JSON.stringify(log));}catch{}};
+  const saveBreakLog=async(log)=>{setBreakLog(log);try{storage.set(BREAK_LOG_KEY,JSON.stringify(log));}catch{}};
+  const startTimer=()=>{setTimerStatus("running");setTimerStart(new Date().toISOString());setTimerElapsed(0);setTimerTaunt(null);};
+  const completeTimer=()=>{const e={date:todayDateKey(),startTime:timerStart,endTime:new Date().toISOString(),duration:timerElapsed};saveTimerLog([e,...timerLog].slice(0,90));setTimerStatus("idle");setTimerElapsed(0);setTimerTaunt(null);};
+  const startBreak=()=>{setBreakStatus("running");setBreakElapsed(0);setBreakTaunt(null);};
+  const stopBreak=()=>{const e={date:todayDateKey(),duration:breakElapsed};saveBreakLog([e,...breakLog].slice(0,90));setBreakStatus("idle");setBreakElapsed(0);setBreakTaunt(null);};
+  const toggleMilestone=(id)=>saveState({...state,milestones:state.milestones.map(m=>m.id===id?{...m,done:!m.done}:m),lastUpdate:new Date().toISOString()});
+  const toggleStamp=(catId,dk)=>{const key=`${catId}:${dk}`,next={...stamps};if(next[key])delete next[key];else next[key]=true;saveStamps(next);};
+  const daysLeft=()=>{if(!state.deadline)return null;return Math.ceil((new Date(state.deadline)-new Date())/86400000);};
+  const days=daysLeft();
+
+  const {year,month}=stampMonth;
+  const daysInMonth=new Date(year,month+1,0).getDate();
+  const firstDay=new Date(year,month,1).getDay();
+  const today=new Date();
+  const todayKey=`${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
+  const monthStampCount=(catId)=>{let c=0;for(let d=1;d<=daysInMonth;d++){const dk=`${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;if(stamps[`${catId}:${dk}`])c++;}return c;};
+  const totalMonthStamps=()=>CATEGORIES.reduce((acc,c)=>acc+monthStampCount(c.id),0);
+
+  const getGraphData=()=>{const now=new Date(),days=graphRange==="week"?7:30,result=[];for(let i=days-1;i>=0;i--){const d=new Date(now);d.setDate(now.getDate()-i);const dk=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;const entries=timerLog.filter(e=>e.date===dk);const totalMin=entries.reduce((a,e)=>a+Math.floor(e.duration/60),0);result.push({dk,label:`${d.getMonth()+1}/${d.getDate()}`,totalMin});}return result;};
+  const getBreakGraphData=()=>{const now=new Date(),days=breakGraphRange==="week"?7:30,result=[];for(let i=days-1;i>=0;i--){const d=new Date(now);d.setDate(now.getDate()-i);const dk=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;const entries=breakLog.filter(e=>e.date===dk);const totalMin=entries.reduce((a,e)=>a+Math.floor(e.duration/60),0);result.push({dk,label:`${d.getMonth()+1}/${d.getDate()}`,totalMin});}return result;};
+
+  const navStyle=(p)=>({padding:"8px 20px",cursor:"pointer",fontSize:12,letterSpacing:2,border:"none",borderBottom:page===p?"2px solid #3a7acc":"2px solid transparent",background:"none",color:page===p?"#7ab0dd":"#555",fontFamily:S.font});
+  const SysMsg=({msg})=>React.createElement("div",{style:{marginBottom:28}},React.createElement("div",{style:{fontSize:11,letterSpacing:3,color:"#4a7aaa",marginBottom:8}},"SYSTEM MESSAGE"),React.createElement("div",{style:{background:"#0a0f1a",border:"1px solid #1a3a5a",borderLeft:"3px solid #3a7acc",padding:"14px 18px",fontSize:13,color:"#7ab0dd",lineHeight:1.8,fontStyle:"italic",borderRadius:"0 4px 4px 0"}},msg));
+
+  if(!loaded)return React.createElement("div",{style:{color:"#555",padding:40,background:S.bg,minHeight:"100vh",fontFamily:S.font}},"読み込み中...");
+
+  const graphData=getGraphData(),maxMin=Math.max(...graphData.map(d=>d.totalMin),1);
+  const bGraphData=getBreakGraphData(),bMaxMin=Math.max(...bGraphData.map(d=>d.totalMin),1);
+
+  return React.createElement("div",{style:{minHeight:"100vh",background:S.bg,color:S.fg,fontFamily:S.font}},
+    React.createElement("div",{style:{borderBottom:"1px solid #1e1e2e",display:"flex",paddingTop:16,paddingLeft:16,overflowX:"auto",background:S.bg}},
+      ["dashboard","stamps","timer","break","report"].map(p=>React.createElement("button",{key:p,style:navStyle(p),onClick:()=>setPage(p)},p.toUpperCase()))
+    ),
+    React.createElement("div",{style:{padding:"28px 24px",maxWidth:600,margin:"0 auto"}},
+
+      page==="dashboard"&&React.createElement(React.Fragment,null,
+        React.createElement(SysMsg,{msg:CHEERS[cheerIndex]}),
+        React.createElement("button",{onClick:()=>setCheerIndex((cheerIndex+1)%CHEERS.length),style:{marginTop:-20,marginBottom:28,background:"none",border:"1px solid #1a3a5a",color:"#3a7acc",padding:"5px 12px",cursor:"pointer",borderRadius:4,fontSize:11,letterSpacing:1}},"▶ 次のメッセージ"),
+        React.createElement("div",{style:{marginBottom:8}},React.createElement("div",{style:{fontSize:11,letterSpacing:4,color:"#666",marginBottom:4}},"ADVENTURE GAME PROJECT"),React.createElement("h1",{style:{fontSize:26,fontWeight:700,margin:0,color:"#fff"}},"制作ダッシュボード")),
+        React.createElement("div",{style:{height:1,background:"#1e1e2e",margin:"20px 0"}}),
+        React.createElement("div",{style:{marginBottom:28}},
+          React.createElement("div",{style:{fontSize:11,letterSpacing:3,color:"#555",marginBottom:10}},"DEADLINE"),
+          editingDeadline?React.createElement("div",{style:{display:"flex",gap:8,alignItems:"center"}},
+            React.createElement("input",{type:"date",defaultValue:state.deadline,style:{background:"#1a1a24",border:"1px solid #3a3a4a",color:S.fg,padding:"8px 12px",fontSize:15,borderRadius:4},onChange:e=>saveState({...state,deadline:e.target.value})}),
+            React.createElement("button",{onClick:()=>setEditingDeadline(false),style:{background:"#2a2a3a",border:"none",color:"#aaa",padding:"8px 14px",cursor:"pointer",borderRadius:4,fontSize:13}},"確定")
+          ):React.createElement("div",{style:{display:"flex",alignItems:"center",gap:14}},
+            React.createElement("span",{style:{fontSize:22,fontWeight:600,color:days!==null&&days<7?"#ff6b6b":"#fff"}},state.deadline?state.deadline.replace(/-/g,"/"):"未設定"),
+            days!==null&&React.createElement("span",{style:{fontSize:13,color:days<7?"#ff6b6b":"#7c6fff"}},`あと ${days} 日`),
+            React.createElement("button",{onClick:()=>setEditingDeadline(true),style:{background:"none",border:"1px solid #333",color:"#666",padding:"4px 10px",cursor:"pointer",borderRadius:4,fontSize:12}},"変更")
+          )
+        ),
+        React.createElement("div",{style:{marginBottom:28}},
+          React.createElement("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}},
+            React.createElement("div",{style:{fontSize:11,letterSpacing:3,color:"#555"}},"OVERALL PROGRESS"),
+            React.createElement("button",{onClick:()=>{setEditingProgress(true);setTempProgress(state.progress);},style:{background:"none",border:"1px solid #333",color:"#666",padding:"4px 10px",cursor:"pointer",borderRadius:4,fontSize:12}},"更新")
+          ),
+          React.createElement("span",{style:{fontSize:36,fontWeight:700,color:"#7c6fff"}},`${state.progress}%`),
+          React.createElement("div",{style:{background:"#1a1a24",borderRadius:3,height:6,overflow:"hidden",marginTop:10}},React.createElement("div",{style:{height:"100%",width:`${state.progress}%`,background:"linear-gradient(90deg,#5c4fff,#a78bfa)",transition:"width 0.5s ease"}})),
+          editingProgress&&React.createElement("div",{style:{marginTop:12,display:"flex",gap:8,alignItems:"center"}},
+            React.createElement("input",{type:"range",min:0,max:100,value:tempProgress,onChange:e=>setTempProgress(Number(e.target.value)),style:{flex:1,accentColor:"#7c6fff"}}),
+            React.createElement("span",{style:{color:"#7c6fff",width:40}},`${tempProgress}%`),
+            React.createElement("button",{onClick:()=>{saveState({...state,progress:tempProgress,lastUpdate:new Date().toISOString()});setEditingProgress(false);},style:{background:"#7c6fff",border:"none",color:"#fff",padding:"6px 14px",cursor:"pointer",borderRadius:4,fontSize:13}},"保存")
+          )
+        ),
+        React.createElement("div",{style:{marginBottom:28}},
+          React.createElement("div",{style:{fontSize:11,letterSpacing:3,color:"#555",marginBottom:12}},"MILESTONES"),
+          state.milestones.map(m=>React.createElement("div",{key:m.id,onClick:()=>toggleMilestone(m.id),style:{display:"flex",alignItems:"center",gap:12,padding:"12px 14px",marginBottom:6,background:m.done?"#1a2a1a":"#1a1a24",border:`1px solid ${m.done?"#2a4a2a":"#2a2a3a"}`,borderRadius:4,cursor:"pointer"}},
+            React.createElement("div",{style:{width:18,height:18,borderRadius:"50%",border:`2px solid ${m.done?"#4ade80":"#444"}`,background:m.done?"#4ade80":"none",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center"}},m.done&&React.createElement("span",{style:{fontSize:11,color:"#0e0e14",fontWeight:700}},"✓")),
+            React.createElement("span",{style:{fontSize:14,color:m.done?"#4ade80":"#ccc",textDecoration:m.done?"line-through":"none"}},m.label)
+          ))
+        ),
+        React.createElement("div",{style:{marginBottom:28}},
+          React.createElement("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}},
+            React.createElement("div",{style:{fontSize:11,letterSpacing:3,color:"#555"}},"MEMO"),
+            React.createElement("button",{onClick:()=>{setEditingNotes(true);setTempNotes(state.notes);},style:{background:"none",border:"1px solid #333",color:"#666",padding:"4px 10px",cursor:"pointer",borderRadius:4,fontSize:12}},"編集")
+          ),
+          editingNotes?React.createElement("div",null,
+            React.createElement("textarea",{value:tempNotes,onChange:e=>setTempNotes(e.target.value),style:{width:"100%",minHeight:100,background:"#1a1a24",border:"1px solid #3a3a4a",color:S.fg,padding:"10px 12px",fontSize:14,borderRadius:4,resize:"vertical",boxSizing:"border-box"},placeholder:"今日の進捗、詰まっていること、思いついたことなど"}),
+            React.createElement("button",{onClick:()=>{saveState({...state,notes:tempNotes,lastUpdate:new Date().toISOString()});setEditingNotes(false);},style:{marginTop:8,background:"#7c6fff",border:"none",color:"#fff",padding:"8px 18px",cursor:"pointer",borderRadius:4,fontSize:13}},"保存")
+          ):React.createElement("div",{style:{background:"#1a1a24",border:"1px solid #2a2a3a",padding:"12px 14px",borderRadius:4,minHeight:60,fontSize:14,color:state.notes?"#ccc":"#444",lineHeight:1.7,whiteSpace:"pre-wrap"}},state.notes||"メモはまだありません"),
+        ),
+        state.lastUpdate&&React.createElement("div",{style:{fontSize:11,color:"#444",textAlign:"right"}},`最終更新: ${new Date(state.lastUpdate).toLocaleString("ja-JP")}`)
+      ),
+
+      page==="stamps"&&React.createElement(React.Fragment,null,
+        React.createElement(SysMsg,{msg:getStampComment(totalMonthStamps())}),
+        React.createElement("div",{style:{marginBottom:8}},React.createElement("div",{style:{fontSize:11,letterSpacing:4,color:"#666",marginBottom:4}},"ACTIVITY TRACKER"),React.createElement("h1",{style:{fontSize:26,fontWeight:700,margin:0,color:"#fff"}},"作業スタンプ")),
+        React.createElement("div",{style:{height:1,background:"#1e1e2e",margin:"20px 0"}}),
+        React.createElement("div",{style:{display:"flex",alignItems:"center",gap:16,marginBottom:24}},
+          React.createElement("button",{onClick:()=>setStampMonth(p=>{const d=new Date(p.year,p.month-1);return{year:d.getFullYear(),month:d.getMonth()};}),style:{background:"none",border:"1px solid #2a2a3a",color:"#666",width:32,height:32,cursor:"pointer",borderRadius:4,fontSize:16}},"‹"),
+          React.createElement("span",{style:{fontSize:16,fontWeight:600,color:"#fff"}},`${year}年${month+1}月`),
+          React.createElement("button",{onClick:()=>setStampMonth(p=>{const d=new Date(p.year,p.month+1);return{year:d.getFullYear(),month:d.getMonth()};}),style:{background:"none",border:"1px solid #2a2a3a",color:"#666",width:32,height:32,cursor:"pointer",borderRadius:4,fontSize:16}},"›")
+        ),
+        CATEGORIES.map(cat=>{
+          const count=monthStampCount(cat.id);
+          return React.createElement("div",{key:cat.id,style:{marginBottom:32}},
+            React.createElement("div",{style:{display:"flex",alignItems:"center",gap:10,marginBottom:12}},
+              React.createElement("span",{style:{fontSize:18}},cat.emoji),
+              React.createElement("span",{style:{fontSize:13,fontWeight:600,color:"#ccc",letterSpacing:2}},cat.label.toUpperCase()),
+              React.createElement("span",{style:{fontSize:11,color:"#555",marginLeft:"auto"}},`${count}日`)
+            ),
+            React.createElement("div",{style:{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:4}},
+              ["日","月","火","水","木","金","土"].map(d=>React.createElement("div",{key:d,style:{fontSize:10,color:"#444",textAlign:"center",paddingBottom:4}},d)),
+              Array.from({length:firstDay}).map((_,i)=>React.createElement("div",{key:`e${i}`})),
+              Array.from({length:daysInMonth}).map((_,i)=>{
+                const d=i+1,dk=`${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`,isToday=dk===todayKey,hasStamp=!!stamps[`${cat.id}:${dk}`];
+                return React.createElement("div",{key:d,onClick:()=>toggleStamp(cat.id,dk),style:{aspectRatio:"1",borderRadius:6,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",background:hasStamp?"#1a2a1a":"#1a1a24",border:isToday?"1px solid #3a7acc":"1px solid #2a2a3a"}},
+                  React.createElement("span",{style:{fontSize:11,color:hasStamp?"#4ade80":isToday?"#7ab0dd":"#555"}},d),
+                  hasStamp&&React.createElement("span",{style:{fontSize:14,lineHeight:1}},cat.emoji)
+                );
+              })
+            )
+          );
+        })
+      ),
+
+      page==="timer"&&React.createElement(React.Fragment,null,
+        React.createElement(SysMsg,{msg:TIMER_OPEN_TAUNTS[timerOpenIndex]}),
+        React.createElement("div",{style:{marginBottom:8}},React.createElement("div",{style:{fontSize:11,letterSpacing:4,color:"#666",marginBottom:4}},"PROCRASTINATION TIMER"),React.createElement("h1",{style:{fontSize:26,fontWeight:700,margin:0,color:"#fff"}},"着手タイマー")),
+        React.createElement("div",{style:{height:1,background:"#1e1e2e",margin:"20px 0"}}),
+        React.createElement("div",{style:{textAlign:"center",marginBottom:28}},
+          React.createElement("div",{style:{fontSize:64,fontWeight:700,letterSpacing:4,color:timerStatus==="running"?"#7ab0dd":"#333",fontVariantNumeric:"tabular-nums"}},fmtTime(timerElapsed)),
+          timerStatus==="idle"&&React.createElement("div",{style:{fontSize:12,color:"#444",marginTop:8}},"やろうと決めた瞬間にスタートを押してください"),
+          timerStatus==="running"&&React.createElement("div",{style:{fontSize:12,color:"#3a5a7a",marginTop:8}},"着手した瞬間に止めてください。記録されています。")
+        ),
+        timerTaunt&&React.createElement("div",{style:{background:"#0a0f1a",border:"1px solid #1a3a5a",borderLeft:"3px solid #3a7acc",padding:"12px 16px",fontSize:13,color:"#7ab0dd",lineHeight:1.8,fontStyle:"italic",borderRadius:"0 4px 4px 0",marginBottom:20}},timerTaunt),
+        React.createElement("div",{style:{display:"flex",gap:10,marginBottom:32}},
+          timerStatus==="idle"&&React.createElement("button",{onClick:startTimer,style:{flex:1,padding:"14px",background:"#0a1a0a",border:"1px solid #2a5a2a",color:"#4ade80",fontSize:14,cursor:"pointer",borderRadius:4,fontFamily:S.font,letterSpacing:1}},"▶ やろうと決めた"),
+          timerStatus==="running"&&React.createElement("button",{onClick:completeTimer,style:{flex:1,padding:"14px",background:"#0a0f1a",border:"1px solid #1a3a5a",color:"#3a7acc",fontSize:13,cursor:"pointer",borderRadius:4,fontFamily:S.font}},"✓ 着手した")
+        ),
+        timerLog.length>0&&React.createElement("div",{style:{marginBottom:28}},
+          React.createElement("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}},
+            React.createElement("div",{style:{fontSize:11,letterSpacing:3,color:"#555"}},"着手までの時間グラフ（分）"),
+            React.createElement("div",{style:{display:"flex",gap:6}},["week","month"].map(r=>React.createElement("button",{key:r,onClick:()=>setGraphRange(r),style:{background:graphRange===r?"#1a3a5a":"none",border:"1px solid #2a2a3a",color:graphRange===r?"#7ab0dd":"#555",padding:"3px 10px",cursor:"pointer",borderRadius:4,fontSize:11,fontFamily:S.font}},r==="week"?"週":"月")))
+          ),
+          React.createElement("div",{style:{display:"flex",alignItems:"flex-end",gap:3,height:80}},
+            graphData.map((d,i)=>React.createElement("div",{key:i,style:{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:3}},
+              React.createElement("div",{style:{fontSize:9,color:d.totalMin>0?"#7ab0dd":"#333"}},d.totalMin>0?d.totalMin:""),
+              React.createElement("div",{style:{width:"100%",borderRadius:"2px 2px 0 0",height:`${Math.max((d.totalMin/maxMin)*56,d.totalMin>0?4:0)}px`,background:"#3a7acc"}}),
+              React.createElement("div",{style:{fontSize:8,color:"#444",whiteSpace:"nowrap"}},d.label)
+            ))
+          )
+        ),
+        timerLog.length>0&&React.createElement("div",{style:{marginBottom:28}},
+          React.createElement("div",{style:{fontSize:11,letterSpacing:3,color:"#555",marginBottom:10}},"直近の記録"),
+          timerLog.slice(0,7).map((e,i)=>React.createElement("div",{key:i,style:{display:"flex",justifyContent:"space-between",padding:"8px 12px",marginBottom:4,background:"#1a1a24",border:"1px solid #2a2a3a",borderRadius:4,fontSize:12}},
+            React.createElement("span",{style:{color:"#555"}},e.date),
+            React.createElement("span",{style:{color:"#7ab0dd"}},`${Math.floor(e.duration/60)}分${e.duration%60}秒`)
+          ))
+        ),
+        timerLog.length>0&&React.createElement("div",null,
+          React.createElement("button",{onClick:generateTimerReport,disabled:timerReportLoading,style:{width:"100%",padding:"12px",marginBottom:16,background:timerReportLoading?"#1a1a24":"#0a0f1a",border:"1px solid #1a3a5a",borderRadius:4,color:timerReportLoading?"#444":"#3a7acc",fontSize:13,letterSpacing:2,cursor:timerReportLoading?"not-allowed":"pointer",fontFamily:S.font}},timerReportLoading?"生成中...":"▶ 着手パターンを分析する"),
+          timerReport&&React.createElement("div",{style:{background:"#0a0f1a",border:"1px solid #1a3a5a",borderLeft:"3px solid #3a7acc",padding:"16px 18px",fontSize:13,color:"#7ab0dd",lineHeight:1.9,fontStyle:"italic",borderRadius:"0 4px 4px 0"}},timerReport)
+        )
+      ),
+
+      page==="break"&&React.createElement(React.Fragment,null,
+        React.createElement(SysMsg,{msg:BREAK_OPEN_TAUNTS[breakOpenIndex]}),
+        React.createElement("div",{style:{marginBottom:8}},React.createElement("div",{style:{fontSize:11,letterSpacing:4,color:"#666",marginBottom:4}},"INTERRUPT TIMER"),React.createElement("h1",{style:{fontSize:26,fontWeight:700,margin:0,color:"#fff"}},"中断タイマー")),
+        React.createElement("div",{style:{height:1,background:"#1e1e2e",margin:"20px 0"}}),
+        React.createElement("div",{style:{textAlign:"center",marginBottom:28}},
+          React.createElement("div",{style:{fontSize:64,fontWeight:700,letterSpacing:4,color:breakStatus==="running"?"#cc3a3a":"#333",fontVariantNumeric:"tabular-nums",marginBottom:8}},fmtTime(breakElapsed)),
+          breakStatus==="running"&&React.createElement("div",{style:{fontSize:12,color:"#7a3a3a"}},"計測中です。この時間は記録されます。")
+        ),
+        breakTaunt&&React.createElement("div",{style:{background:"#1a0a0a",border:"1px solid #5a1a1a",borderLeft:"3px solid #cc3a3a",padding:"12px 16px",fontSize:13,color:"#dd7a7a",lineHeight:1.8,fontStyle:"italic",borderRadius:"0 4px 4px 0",marginBottom:20}},breakTaunt),
+        React.createElement("div",{style:{display:"flex",gap:10,marginBottom:32}},
+          breakStatus==="idle"&&React.createElement("button",{onClick:startBreak,style:{flex:1,padding:"14px",background:"#1a0a0a",border:"1px solid #3a1a1a",color:"#cc3a3a",fontSize:14,cursor:"pointer",borderRadius:4,fontFamily:S.font,letterSpacing:1}},"⏸ 中断開始"),
+          breakStatus==="running"&&React.createElement("button",{onClick:stopBreak,style:{flex:1,padding:"14px",background:"#0a1a0a",border:"1px solid #2a5a2a",color:"#4ade80",fontSize:13,cursor:"pointer",borderRadius:4,fontFamily:S.font}},"▶ 作業に戻る")
+        ),
+        breakLog.length>0&&React.createElement("div",{style:{marginBottom:28}},
+          React.createElement("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}},
+            React.createElement("div",{style:{fontSize:11,letterSpacing:3,color:"#555"}},"中断時間グラフ（分）"),
+            React.createElement("div",{style:{display:"flex",gap:6}},["week","month"].map(r=>React.createElement("button",{key:r,onClick:()=>setBreakGraphRange(r),style:{background:breakGraphRange===r?"#3a1a1a":"none",border:"1px solid #2a2a3a",color:breakGraphRange===r?"#dd7a7a":"#555",padding:"3px 10px",cursor:"pointer",borderRadius:4,fontSize:11,fontFamily:S.font}},r==="week"?"週":"月")))
+          ),
+          React.createElement("div",{style:{display:"flex",alignItems:"flex-end",gap:3,height:80}},
+            bGraphData.map((d,i)=>React.createElement("div",{key:i,style:{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:3}},
+              React.createElement("div",{style:{fontSize:9,color:d.totalMin>0?"#dd7a7a":"#333"}},d.totalMin>0?d.totalMin:""),
+              React.createElement("div",{style:{width:"100%",borderRadius:"2px 2px 0 0",height:`${Math.max((d.totalMin/bMaxMin)*56,d.totalMin>0?4:0)}px`,background:d.totalMin>30?"#cc3a3a":"#7a3a3a"}}),
+              React.createElement("div",{style:{fontSize:8,color:"#444",whiteSpace:"nowrap"}},d.label)
+            ))
+          ),
+          React.createElement("div",{style:{fontSize:10,color:"#444",marginTop:6}},"濃い赤=30分超")
+        ),
+        breakLog.length>0&&React.createElement("div",{style:{marginBottom:28}},
+          React.createElement("div",{style:{fontSize:11,letterSpacing:3,color:"#555",marginBottom:10}},"直近の記録"),
+          breakLog.slice(0,7).map((e,i)=>React.createElement("div",{key:i,style:{display:"flex",justifyContent:"space-between",padding:"8px 12px",marginBottom:4,background:"#1a1a24",border:"1px solid #2a2a3a",borderRadius:4,fontSize:12}},
+            React.createElement("span",{style:{color:"#555"}},e.date),
+            React.createElement("span",{style:{color:e.duration>1800?"#cc3a3a":"#dd7a7a"}},`${Math.floor(e.duration/60)}分${e.duration%60}秒`)
+          ))
+        ),
+        breakLog.length>0&&React.createElement("div",null,
+          React.createElement("button",{onClick:generateBreakReport,disabled:breakReportLoading,style:{width:"100%",padding:"12px",marginBottom:16,background:breakReportLoading?"#1a1a24":"#1a0a0a",border:"1px solid #5a1a1a",borderRadius:4,color:breakReportLoading?"#444":"#cc3a3a",fontSize:13,letterSpacing:2,cursor:breakReportLoading?"not-allowed":"pointer",fontFamily:S.font}},breakReportLoading?"生成中...":"▶ 中断パターンを分析する"),
+          breakReport&&React.createElement("div",{style:{background:"#1a0a0a",border:"1px solid #5a1a1a",borderLeft:"3px solid #cc3a3a",padding:"16px 18px",fontSize:13,color:"#dd7a7a",lineHeight:1.9,fontStyle:"italic",borderRadius:"0 4px 4px 0"}},breakReport)
+        )
+      ),
+
+      page==="report"&&React.createElement(React.Fragment,null,
+        React.createElement(SysMsg,{msg:CHEERS[(cheerIndex+1)%CHEERS.length]}),
+        React.createElement("div",{style:{marginBottom:8}},React.createElement("div",{style:{fontSize:11,letterSpacing:4,color:"#666",marginBottom:4}},"WEEKLY REPORT"),React.createElement("h1",{style:{fontSize:26,fontWeight:700,margin:0,color:"#fff"}},"週次レポート")),
+        React.createElement("div",{style:{height:1,background:"#1e1e2e",margin:"20px 0"}}),
+        React.createElement("div",{style:{marginBottom:24}},
+          React.createElement("div",{style:{fontSize:11,letterSpacing:3,color:"#555",marginBottom:12}},"TODAY'S WEEK"),
+          (()=>{const ws=getWeekStamps(),{start,end}=getWeekRange();return React.createElement("div",null,
+            React.createElement("div",{style:{fontSize:12,color:"#555",marginBottom:12}},`${start} 〜 ${end}`),
+            React.createElement("div",{style:{display:"flex",gap:8,flexWrap:"wrap",marginBottom:16}},
+              CATEGORIES.map(cat=>React.createElement("div",{key:cat.id,style:{background:"#1a1a24",border:"1px solid #2a2a3a",borderRadius:6,padding:"10px 16px",textAlign:"center",minWidth:70}},
+                React.createElement("div",{style:{fontSize:20}},cat.emoji),
+                React.createElement("div",{style:{fontSize:11,color:"#666",marginTop:2}},cat.label),
+                React.createElement("div",{style:{fontSize:20,fontWeight:700,color:ws[cat.label]>0?"#4ade80":"#333",marginTop:2}},ws[cat.label])
+              ))
+            )
+          );})()
+        ),
+        React.createElement("button",{onClick:generateReport,disabled:reportLoading,style:{width:"100%",padding:"14px",marginBottom:24,background:reportLoading?"#1a1a24":"#0a0f1a",border:"1px solid #1a3a5a",borderRadius:4,color:reportLoading?"#444":"#3a7acc",fontSize:13,letterSpacing:2,cursor:reportLoading?"not-allowed":"pointer",fontFamily:S.font}},reportLoading?"生成中...":"▶ 週次レポートを生成する"),
+        report&&React.createElement("div",null,
+          React.createElement("div",{style:{fontSize:11,letterSpacing:3,color:"#4a7aaa",marginBottom:8}},"SYSTEM MESSAGE"),
+          React.createElement("div",{style:{background:"#0a0f1a",border:"1px solid #1a3a5a",borderLeft:"3px solid #3a7acc",padding:"18px 20px",fontSize:14,color:"#7ab0dd",lineHeight:2,fontStyle:"italic",borderRadius:"0 4px 4px 0"}},report)
+        )
+      )
+    )
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(React.createElement(App));
+</script>
+</body>
+</html>
